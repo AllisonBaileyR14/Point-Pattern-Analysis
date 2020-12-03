@@ -1,0 +1,157 @@
+---
+title: "lab_7_bailey"
+author: "Allison Bailey"
+date: "2/20/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      message = FALSE,
+                      warning = FALSE)
+```
+
+```{r}
+
+library(tidyverse)
+library(janitor)
+library(plotly)
+library(tmap)
+library(sf)
+library(spatstat)
+library(maptools)
+library(sp)
+library(NbClust)
+library(cluster)
+library(factoextra)
+library(dendextend)
+library(ggdendro)
+library(here)
+
+```
+
+## Get data
+
+Red tree voles in Humboldt County
+
+```{r}
+
+voles <- read_sf(dsn = here("data", "redtreevoledata"), 
+                 layer = "ds033") %>%
+  dplyr::select(COUNTY) %>%
+  dplyr::filter(COUNTY == "HUM") %>%
+  st_transform(crs = 4326)
+
+# st_crs(voles)
+
+plot(voles)
+
+## Read in data for Humboldt County:
+humboldt <- read_sf(dsn = here("data", "redtreevoledata"),
+                    layer = "california_county_shape_file", crs = 4326) %>%
+  filter(NAME == "Humboldt") %>%
+  dplyr::select(NAME)
+
+# st_crs(humboldt)
+
+plot(humboldt)
+
+tm_shape(humboldt) +
+  tm_fill() +
+  tm_borders() +
+  tm_shape(voles) +
+  tm_dots(size = 0.5)
+
+# Geocomputation in R (Robin Lovelace)
+ggplot() +
+  geom_sf(data = humboldt) +
+  geom_sf(data = voles) +
+  coord_sf()
+
+# tmap is used for interactive mode.
+
+```
+
+Convert vole events and Humboldt polygon to point pattern + window:
+
+```{r}
+voles_sp <- as(voles, "Spatial")
+
+
+# voles_ppp <- as(voles_sp, "ppp") Expect answers from Allison and Jessica.  Ths code doesn't work. 
+
+```
+
+## Cluster analysis
+
+### k-means
+
+```{r}
+iris_nice <- iris %>%
+  clean_names()
+
+ggplot(data = iris_nice) +
+  geom_point(aes(x = petal_length, y = petal_width, color = species))
+
+# How many clusters do YOU think there should be for this dataset?
+
+number_est <- NbClust(iris_nice[1:4],
+                      min.nc = 2,
+                      max.nc = 10,
+                      method = "kmeans")
+
+# Dindex Values....the higher the more algorithms picked that. 
+
+# Do kmeans: 
+iris_km <- kmeans(iris_nice[1:4], 3) # size equals the number of observatons in each cluster. 
+
+# Bind the cluster number together with the original data.
+
+iris_cl <- data.frame(iris_nice, cluster_no = factor(iris_km$cluster))
+
+# Plot my different clusters:
+ggplot(data = iris_cl) +
+  geom_point(aes(x = sepal_length, y = sepal_width, color = cluster_no))
+
+```
+
+```{r}
+plot_ly(x = iris_cl$petal_length,
+        y = iris_cl$petal_width,
+        z = iris_cl$sepal_width,
+        type = "scatter3d",
+        color = iris_cl$cluster_no)
+```
+#### Hierarchical cluster analysis
+
+- 'stats::hclust()' - agglomerative hierarchical clustering
+- 'cluster::diana()' - divisive hierarchical clustering
+
+```{r}
+
+wb_env <- read_csv(here("data", "wb_env.csv")) 
+
+wb_ghg_20 <- wb_env %>%
+  arrange(-ghg) %>%
+  head(20)
+
+wb_scaled <- as.data.frame(scale(wb_ghg_20[3:7]))
+
+rownames(wb_scaled)  <- wb_ghg_20$name
+
+# Find distances (create a dissimilarity matrix):
+diss <- dist(wb_scaled, method = "euclidean")
+
+# Use euclidean distances to do some complete agglomerative clustering:
+hc_complete <- hclust(diss, method = "complete")
+
+# Plot it:
+plot(hc_complete)
+
+ggdendrogram(hc_complete,
+              rotate = TRUE) +
+  theme_minimal() +
+  labs(x = "Country")
+
+```
+
